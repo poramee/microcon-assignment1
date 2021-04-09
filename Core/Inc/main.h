@@ -37,6 +37,30 @@ extern "C" {
 
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
+typedef struct DisplayInfo{
+	uint8_t page; // 0=main, 1=timer, 2=about us
+	
+	uint8_t temperature;
+	uint8_t humidity;
+	uint8_t light;
+	
+	uint16_t timeSec;
+	uint16_t timeMin;
+	uint16_t timeHr;
+	
+	uint8_t updateScreen;
+} DisplayInfo;
+
+
+typedef struct Timer{
+	uint8_t isActive;
+	uint32_t timeLeftSec;
+	uint16_t tick; // 1 tick = 1ms
+	uint8_t timerDone;
+} Timer;
+
+
+
 
 /* USER CODE END ET */
 

@@ -60,7 +60,7 @@ float h=0.0, t=0.0;
 uint8_t step = 0;
 HAL_StatusTypeDef status;
 
-volatile uint32_t adc_val = 0;
+volatile uint32_t adc_val = 0; // Light Sensor
 
 char str[50];
 uint8_t cmdBuffer[3];
@@ -75,20 +75,8 @@ float tempBuffer[20];
 float humidBuffer[20];
 
 
-typedef struct DisplayInfo{
-	uint8_t page; // 0=main, 1=timer, 2=about us
-	
-	uint8_t temperature;
-	uint8_t humidity;
-	uint8_t light;
-	
-	uint8_t timerActive; // 0 = off, 1 = running
-	uint32_t timeLeft;
-	
-	uint8_t updateScreen;
-} DisplayInfo;
-
-DisplayInfo lcdInfo;
+DisplayInfo lcdInfo; // DisplayInfo details can be found at main.h
+Timer timer; // Timer details can be found at main.h
 
 
 /* USER CODE END PV */
@@ -96,11 +84,12 @@ DisplayInfo lcdInfo;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-int LCDDisplay(DisplayInfo* info);
+int LCDDisplay(DisplayInfo* info, Timer* timer);
+void timerController(Timer* timer);
 
 void adcLightSensor(uint32_t);
-void i2cAM2320Sensor();
-void printRecord();
+void i2cAM2320Sensor(void );
+void printRecord(void );
 
 uint16_t CRC16_2(uint8_t *ptr, uint8_t length)
 {
@@ -166,6 +155,7 @@ int main(void)
   MX_USART3_UART_Init();
   MX_ADC1_Init();
   MX_I2C1_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
 	ILI9341_Init();
 	
@@ -175,12 +165,17 @@ int main(void)
 	
 	lcdInfo.temperature = 0;
 	lcdInfo.humidity = 0;
-	lcdInfo.light = 0;
+	lcdInfo.light = 99;
 	lcdInfo.page = 0;
-	lcdInfo.timerActive = 0;
 	lcdInfo.updateScreen = 1;
+	lcdInfo.timeHr = 0;
+	lcdInfo.timeMin = 0;
+	lcdInfo.timeSec = 0;
 	
-	uint8_t cnt = 0;
+	timer.isActive = 0;
+	timer.timeLeftSec = 0;
+	timer.tick = 0;
+	timer.timerDone = 0;
 	
 	
 	HAL_ADC_Start(&hadc1);
@@ -204,11 +199,9 @@ int main(void)
 		
 		
 		printRecord();
+		timerController(&timer);
 		
-		lcdInfo.temperature = (uint8_t) t;
-		lcdInfo.humidity = (uint8_t) h;
-		
-		LCDDisplay(&lcdInfo);
+		LCDDisplay(&lcdInfo,&timer);
 		
 		
 		if(TP_Touchpad_Pressed()){
@@ -294,45 +287,69 @@ void SystemClock_Config(void)
 
 /* USER CODE BEGIN 4 */
 
-void mainPage(DisplayInfo* info){
-	char temperatureStr[10];
-	if(info -> temperature < 10) sprintf(temperatureStr," %d", info -> temperature);
-	else sprintf(temperatureStr,"%d", info -> temperature);
+void mainPage(DisplayInfo* info, Timer* timer){
+	uint8_t currTemp = (uint8_t) t;
+	uint8_t currHumid = (uint8_t) h;
+	uint8_t currLight = (uint8_t) h;
 	
+	if(info -> updateScreen || info -> temperature != currTemp){
+		info -> temperature = currTemp;
+		char temperatureStr[10];
+		if(info -> temperature < 10) sprintf(temperatureStr," %d", info -> temperature);
+		else sprintf(temperatureStr,"%d", info -> temperature);
 	
-	ILI9341_Draw_Text("TEMP", 80, 70, WHITE, 1, BLACK);
-	ILI9341_Draw_Text(temperatureStr, 115, 75, WHITE, 7, BLACK);
-	ILI9341_Draw_Text("C", 210, 95, WHITE, 3, BLACK);
+		ILI9341_Draw_Text("TEMP", 80, 70, WHITE, 1, BLACK);
+		ILI9341_Draw_Text(temperatureStr, 115, 75, WHITE, 7, BLACK);
+		ILI9341_Draw_Text("C", 210, 95, WHITE, 3, BLACK);
+	}
 	
-	char humidityStr[10], lightStr[10];
-	ILI9341_Draw_Text("HUMID", 80, 145, WHITE, 1, BLACK);
-	ILI9341_Draw_Text("LIGHT", 180, 145, WHITE, 1, BLACK);
+	if(info -> updateScreen || info -> humidity != currHumid){
+		char humidityStr[10];
+		ILI9341_Draw_Text("HUMID", 80, 145, WHITE, 1, BLACK);
+		sprintf(humidityStr,"%d%%",info -> humidity);
+		ILI9341_Draw_Text(humidityStr, 80, 155, WHITE, 4, BLACK);
+	}
 	
-	sprintf(humidityStr,"%d%%",info -> humidity);
-	sprintf(lightStr,"%d%%",info -> light);
-	
-	ILI9341_Draw_Text(humidityStr, 80, 155, WHITE, 4, BLACK);
-	ILI9341_Draw_Text(lightStr, 180, 155, WHITE, 4, BLACK);
+	if(info -> updateScreen || info -> light != currLight){
+		char lightStr[10];
+		ILI9341_Draw_Text("LIGHT", 180, 145, WHITE, 1, BLACK);
+		sprintf(lightStr,"%d%%",info -> light);
+		ILI9341_Draw_Text(lightStr, 180, 155, WHITE, 4, BLACK);
+	}
 	
 	
 	ILI9341_Draw_Text("TIMER", 10, 10, WHITE, 1, BLACK);
-	if(info -> timerActive) ILI9341_Draw_Text("00:00", 10, 23, WHITE, 2, BLACK);
+	if(timer -> isActive && (timer -> timeLeftSec / 60 != (info -> timeHr*60) + info -> timeMin)){
+		info -> timeHr = (timer -> timeLeftSec) / 3600;
+		info -> timeMin = ((timer -> timeLeftSec) - (info -> timeHr*3600))/60;
+		info -> timeSec = (timer -> timeLeftSec) - (info -> timeHr*3600) - (info -> timeMin*60);
+		char timerStr[10];
+		sprintf(timerStr,"%.2d:%.2d",info -> timeHr, info -> timeMin);
+		ILI9341_Draw_Text(timerStr, 10, 23, WHITE, 2, BLACK);
+	}
 	else ILI9341_Draw_Text("Off", 10, 23,  0x9492, 2, BLACK);
+
 	return;
 }
 
-void timerPage(DisplayInfo* info){
-	char strHo[10],strM[10],strS[10];
-	uint16_t m = 0,ho = 0 ,s = 0;
-	ho = (info -> timeLeft) / 3600;
-	m = ((info -> timeLeft) - (ho*60))/60;
-	s = (info -> timeLeft) - (ho*60) - (m*60);
-	
-	sprintf(strHo ,"%02d:",ho);
-	sprintf(strM ,"%02d:",m);
-	sprintf(strS ,"%02d",s);
-	
+void timerPage(DisplayInfo* info, Timer* timer){
+	if(timer -> isActive && timer -> timeLeftSec != (info -> timeHr * 3600) + (info -> timeMin * 60) + (info -> timeSec)){
+		info -> timeHr = (timer -> timeLeftSec) / 3600;
+		info -> timeMin = ((timer -> timeLeftSec) - (info -> timeHr*3600))/60;
+		info -> timeSec = (timer -> timeLeftSec) - (info -> timeHr*3600) - (info -> timeMin*60);
+		
+		info -> updateScreen = 1;
+	}
 	if(info -> updateScreen){
+			char strHo[10],strM[10],strS[10];
+			uint16_t m = 0,ho = 0 ,s = 0;
+			ho = info -> timeHr;
+			m = info -> timeMin;
+			s = info -> timeSec;
+	
+			sprintf(strHo ,"%02d:",ho);
+			sprintf(strM ,"%02d:",m);
+			sprintf(strS ,"%02d",s);
 			ILI9341_Draw_Text(strHo, 45, 50, BLACK, 6, WHITE);
 			ILI9341_Draw_Text(strM, 130, 50, BLACK, 6, WHITE);
 			ILI9341_Draw_Text(strS, 215, 50, BLACK, 6, WHITE);
@@ -340,57 +357,64 @@ void timerPage(DisplayInfo* info){
 			ILI9341_Draw_Filled_Rectangle_Coord(130, 100, 195, 135, BLUE);
 			ILI9341_Draw_Filled_Rectangle_Coord(215, 100, 275, 135, BLUE);
 			ILI9341_Draw_Filled_Circle(155, 180, 30, RED);
+		
 			info -> updateScreen = 0;
 	}
-		
-	if(TP_Touchpad_Pressed())
-        {
-					info -> updateScreen = 1;
-					uint16_t x_pos = 0;
-					uint16_t y_pos = 0;
+
+	if(TP_Touchpad_Pressed()){
+			info -> updateScreen = 1;
+			uint16_t x_pos = 0;
+			uint16_t y_pos = 0;
 					
-          uint16_t position_array[2];					
+      uint16_t position_array[2];					
 					
-					if(TP_Read_Coordinates(position_array) == TOUCHPAD_DATA_OK)
-					{
+			if(TP_Read_Coordinates(position_array) == TOUCHPAD_DATA_OK){
 					x_pos = position_array[0];
 					y_pos = position_array[1];					
 								
 					if(y_pos > 45 && y_pos < 110 && x_pos > 100 && x_pos < 135) {
-						if(ho>=23) ho=0;
-						else ho += 1;
+						info -> timeHr += 1;
+						info -> timeHr %= 99;
 					}
 					if(y_pos > 130 && y_pos < 195 && x_pos > 100 && x_pos < 135) {
-						if(m>=55) m=0;
-						else m += 5;
+						info -> timeMin += 1;
+						info -> timeMin %= 60;
 					}
 					if(y_pos > 215 && y_pos < 275 && x_pos > 100 && x_pos < 135) {
-						if(s>=50) s=0;
-						else s += 10;
+						info -> timeSec += 10;
+						info -> timeSec %= 60;
 					}
 					if(y_pos > 125 && y_pos < 185 && x_pos > 30 && x_pos < 90) { 
-						info -> timerActive = 1;
-						
+						timer -> isActive = 1;
+						timer -> timeLeftSec = (info -> timeHr*3600) + (info -> timeMin*60) + (info -> timeSec);
+						timer -> timerDone = 0;
 					}
-					
         }
-			}
+	}
 }
 
-int LCDDisplay(DisplayInfo* info){
+int LCDDisplay(DisplayInfo* info, Timer* timer){
 	const uint8_t page = info -> page;
 	if(!info -> updateScreen) return 0;
 	switch(page){
 		case 0:
-			mainPage(info);
+			mainPage(info, timer);
 			break;
 		case 1:
-			timerPage(info);
+			timerPage(info, timer);
 			break;
 	}
 	
 	
 	return 0;
+}
+
+void timerController(Timer* timer){
+	if(timer -> isActive && timer -> timeLeftSec == 0){
+		timer -> isActive = 0;
+		timer -> tick = 0;
+		timer -> timerDone = 1;
+	}
 }
 
 
@@ -404,7 +428,7 @@ void adcLightSensor(uint32_t adc_val){
 	HAL_UART_Transmit(&huart3, (uint8_t*) &tmp, strlen(tmp), 1000);
 	HAL_UART_Transmit(&huart3, (uint8_t*) &" %\n\r", 6, 1000);
 	
-		
+	
 	if(topLightBuffer == 19) // Checking Array is full or not. 
 	{ 
 		for(int i=0;i<19;i++){
