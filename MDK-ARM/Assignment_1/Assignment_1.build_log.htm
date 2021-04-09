@@ -1,0 +1,69 @@
+<html>
+<body>
+<pre>
+<h1>µVision Build Log</h1>
+<h2>Tool Versions:</h2>
+IDE-Version: µVision V5.33.0.0
+Copyright (C) 2020 ARM Ltd and ARM Germany GmbH. All rights reserved.
+License Information: Poramee Chansuksett KMITL Flex license: MDK Professional 5.33 (Flex) (mdk_pro) Borrow: 20 May 2021
+ 
+Tool Versions:
+Toolchain:       MDK Professional 5.33 (Flex)  Version: 5.33.0.0
+Toolchain Path:  C:\Keil_v5\ARM\ARMCC\Bin
+C Compiler:      Armcc.exe V5.06 update 7 (build 960)
+Assembler:       Armasm.exe V5.06 update 7 (build 960)
+Linker/Locator:  ArmLink.exe V5.06 update 7 (build 960)
+Library Manager: ArmAr.exe V5.06 update 7 (build 960)
+Hex Converter:   FromElf.exe V5.06 update 7 (build 960)
+CPU DLL:         SARMCM3.DLL V5.33.0.0
+Dialog DLL:      DCM.DLL V1.17.3.0
+Target DLL:      STLink\ST-LINKIII-KEIL_SWO.dll V3.0.8.0
+Dialog DLL:      TCM.DLL V1.48.0.0
+ 
+<h2>Project:</h2>
+\\vmware-host\Shared Folders\Documents\Lab Microcon\Assignment_1\MDK-ARM\Assignment_1.uvprojx
+Project File Date:  04/06/2021
+
+<h2>Output:</h2>
+*** Using Compiler 'V5.06 update 7 (build 960)', folder: 'C:\Keil_v5\ARM\ARMCC\Bin'
+Build target 'Assignment_1'
+compiling main.c...
+../Core/Src/main.c(96): error:  #84: invalid combination of type specifiers
+  void SystemClock_Config(void);
+../Core/Src/main.c(102): warning:  #1295-D: Deprecated declaration i2cAM2320Sensor - give arg types
+  void i2cAM2320Sensor();
+../Core/Src/main.c(103): warning:  #1295-D: Deprecated declaration printRecord - give arg types
+  void printRecord();
+../Core/Src/main.c(180): warning:  #177-D: variable "cnt"  was declared but never referenced
+        uint8_t cnt = 0;
+../Core/Src/main.c(370): error:  #20: identifier "start" is undefined
+                                                start = 1;
+../Core/Src/main.c: 3 warnings, 2 errors
+"Assignment_1\Assignment_1.axf" - 2 Error(s), 3 Warning(s).
+
+<h2>Software Packages used:</h2>
+
+Package Vendor: ARM
+                http://www.keil.com/pack/ARM.CMSIS.5.7.0.pack
+                ARM.CMSIS.5.7.0
+                CMSIS (Cortex Microcontroller Software Interface Standard)
+   * Component: CORE Version: 5.4.0
+
+Package Vendor: Keil
+                https://www.keil.com/pack/Keil.STM32F7xx_DFP.2.12.0.pack
+                Keil.STM32F7xx_DFP.2.12.0
+                STMicroelectronics STM32F7 Series Device Support, Drivers and Examples
+
+<h2>Collection of Component include folders:</h2>
+  .\RTE\_Assignment_1
+  C:\Users\Administrator\AppData\Local\Arm\Packs\ARM\CMSIS\5.7.0\CMSIS\Core\Include
+  C:\Users\Administrator\AppData\Local\Arm\Packs\Keil\STM32F7xx_DFP\2.12.0\Drivers\CMSIS\Device\ST\STM32F7xx\Include
+
+<h2>Collection of Component Files used:</h2>
+
+   * Component: ARM::CMSIS:CORE:5.4.0
+Target not created.
+Build Time Elapsed:  00:00:28
+</pre>
+</body>
+</html>
