@@ -50,3 +50,4 @@ assignment_1\main.o: ..\Core\Src\ILI9341\ILI9341_STM32_Driver.h
 assignment_1\main.o: ..\Core\Src\ILI9341\ILI9341_GFX.h
 assignment_1\main.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 assignment_1\main.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
+assignment_1\main.o: ..\Resource\EEPROM_STM32\EEPROM.h

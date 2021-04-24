@@ -44,11 +44,18 @@ typedef struct DisplayInfo{
 	uint8_t humidity;
 	uint8_t light;
 	
-	uint16_t timeSec;
-	uint16_t timeMin;
-	uint16_t timeHr;
+	uint8_t timerActive; // 0=inactive, 1=active, 2=done
+	uint8_t timeSec;
+	uint8_t timeMin;
+	uint8_t timeHr;
+	
+	uint8_t avgTemp;
+	uint8_t avgHumid;
+	uint8_t avgLight;
+	uint16_t avgHighlightTimer;
 	
 	uint8_t updateScreen;
+	uint8_t updateAvg;
 } DisplayInfo;
 
 

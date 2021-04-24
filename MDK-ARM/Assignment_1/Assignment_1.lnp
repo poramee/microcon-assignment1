@@ -13,6 +13,7 @@
 "assignment_1\usart.o"
 "assignment_1\stm32f7xx_it.o"
 "assignment_1\stm32f7xx_hal_msp.o"
+"assignment_1\eeprom.o"
 "assignment_1\stm32f7xx_hal_adc.o"
 "assignment_1\stm32f7xx_hal_adc_ex.o"
 "assignment_1\stm32f7xx_hal_rcc.o"

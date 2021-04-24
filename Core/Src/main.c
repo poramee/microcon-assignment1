@@ -37,6 +37,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "EEPROM.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -59,6 +61,7 @@
 float h=0.0, t=0.0;
 uint8_t step = 0;
 HAL_StatusTypeDef status;
+int timerForUART = 0;
 
 volatile uint32_t adc_val = 0; // Light Sensor
 
@@ -73,6 +76,7 @@ int topHumidBuffer = 0;
 int lightBuffer[20];
 float tempBuffer[20];
 float humidBuffer[20];
+int lightValue = 0;
 
 
 DisplayInfo lcdInfo; // DisplayInfo details can be found at main.h
@@ -85,7 +89,7 @@ Timer timer; // Timer details can be found at main.h
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 int LCDDisplay(DisplayInfo* info, Timer* timer);
-void timerController(Timer* timer);
+void timerController(DisplayInfo* info,Timer* timer);
 
 void adcLightSensor(uint32_t);
 void i2cAM2320Sensor(void );
@@ -112,6 +116,31 @@ uint16_t CRC16_2(uint8_t *ptr, uint8_t length)
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+void init_eeprom()
+{
+	for (int i = 0; i < 512; i++) {
+		EEPROM_PageErase(i);
+	}
+}
+
+void write_to_eeprom(uint8_t light, uint8_t temp, uint8_t humid)
+{
+	// delete data in eeprom
+	for (int i = 0; i < 0; i++) {
+		EEPROM_PageErase(i);
+	}
+	
+	// write data to eeprom
+	uint8_t tmp[] = {light, temp, humid};
+	EEPROM_Write(0, 0, tmp, 3);
+}
+
+void read_from_eeprom(uint8_t dataLoad[])
+{
+	EEPROM_Read(0,0, dataLoad, 3);
+}
+
 
 /* USER CODE END 0 */
 
@@ -168,9 +197,20 @@ int main(void)
 	lcdInfo.light = 99;
 	lcdInfo.page = 0;
 	lcdInfo.updateScreen = 1;
+	
 	lcdInfo.timeHr = 0;
 	lcdInfo.timeMin = 0;
 	lcdInfo.timeSec = 0;
+	
+	uint8_t eepromData[3];
+	read_from_eeprom(eepromData);
+	lcdInfo.avgLight = eepromData[0];
+	lcdInfo.avgTemp = eepromData[1];
+	lcdInfo.avgHumid = eepromData[2];
+	lcdInfo.updateAvg = 0;
+	lcdInfo.avgHighlightTimer = 0;
+	
+	
 	
 	timer.isActive = 0;
 	timer.timeLeftSec = 0;
@@ -179,6 +219,7 @@ int main(void)
 	
 	
 	HAL_ADC_Start(&hadc1);
+	HAL_TIM_Base_Start_IT(&htim1);
 	
 	sprintf(str, "\n\rAM2320 I2C DEMO Starting . . .\n\r");
 	HAL_UART_Transmit(&huart3, (uint8_t*)&str, strlen(str), 1000);
@@ -199,11 +240,11 @@ int main(void)
 		
 		
 		printRecord();
-		timerController(&timer);
+		timerController(&lcdInfo,&timer);
 		
 		LCDDisplay(&lcdInfo,&timer);
 		
-		
+		/*
 		if(TP_Touchpad_Pressed()){
 			uint16_t x_pos = 0;
 			uint16_t y_pos = 0;
@@ -215,10 +256,12 @@ int main(void)
 				y_pos = position_array[1];
 				
 				char coord[20];
-				sprintf(coord,"%.3d %.3d",x_pos,y_pos);
+				sprintf(coord,"%.3d %.3d %.5d",x_pos,y_pos,lcdInfo.avgHighlightTimer);
 				ILI9341_Draw_Text(coord, 20, 230, WHITE, 1, BLACK);
 			}
 		}
+		*/
+		
   }
   /* USER CODE END 3 */
 }
@@ -287,10 +330,18 @@ void SystemClock_Config(void)
 
 /* USER CODE BEGIN 4 */
 
+void changeToPage(DisplayInfo* info, int pageNo){
+	info -> page = pageNo;
+	ILI9341_Fill_Screen(BLACK);
+	info -> updateScreen = 1;
+	HAL_Delay(100);
+}
+
 void mainPage(DisplayInfo* info, Timer* timer){
+	
 	uint8_t currTemp = (uint8_t) t;
 	uint8_t currHumid = (uint8_t) h;
-	uint8_t currLight = (uint8_t) h;
+	uint8_t currLight = (uint8_t) lightValue;
 	
 	if(info -> updateScreen || info -> temperature != currTemp){
 		info -> temperature = currTemp;
@@ -298,48 +349,129 @@ void mainPage(DisplayInfo* info, Timer* timer){
 		if(info -> temperature < 10) sprintf(temperatureStr," %d", info -> temperature);
 		else sprintf(temperatureStr,"%d", info -> temperature);
 	
-		ILI9341_Draw_Text("TEMP", 80, 70, WHITE, 1, BLACK);
-		ILI9341_Draw_Text(temperatureStr, 115, 75, WHITE, 7, BLACK);
-		ILI9341_Draw_Text("C", 210, 95, WHITE, 3, BLACK);
+		ILI9341_Draw_Text("TEMP", 70, 60, WHITE, 1, BLACK);
+		ILI9341_Draw_Text(temperatureStr, 115, 65, WHITE, 7, BLACK);
+		ILI9341_Draw_Text("C", 210, 85, WHITE, 3, BLACK);
 	}
 	
 	if(info -> updateScreen || info -> humidity != currHumid){
+		info -> humidity = currHumid;
 		char humidityStr[10];
-		ILI9341_Draw_Text("HUMID", 80, 145, WHITE, 1, BLACK);
+		ILI9341_Draw_Text("HUMID", 70, 145, WHITE, 1, BLACK);
 		sprintf(humidityStr,"%d%%",info -> humidity);
-		ILI9341_Draw_Text(humidityStr, 80, 155, WHITE, 4, BLACK);
+		ILI9341_Draw_Text(humidityStr, 70, 155, WHITE, 4, BLACK);
 	}
 	
 	if(info -> updateScreen || info -> light != currLight){
+		info -> light = currLight;
 		char lightStr[10];
-		ILI9341_Draw_Text("LIGHT", 180, 145, WHITE, 1, BLACK);
-		sprintf(lightStr,"%d%%",info -> light);
-		ILI9341_Draw_Text(lightStr, 180, 155, WHITE, 4, BLACK);
+		ILI9341_Draw_Text("LIGHT", 190, 145, WHITE, 1, BLACK);
+		if(info -> light < 10) sprintf(lightStr," %d%%",info -> light);
+		else sprintf(lightStr,"%d%%",info -> light);
+		ILI9341_Draw_Text(lightStr, 190, 155, WHITE, 4, BLACK);
+	}
+	uint8_t currentTimerStatus = timer -> isActive;
+	if(timer -> timerDone) currentTimerStatus = 2;
+	const uint8_t isTimerStatusChange = currentTimerStatus != info -> timerActive;
+	const uint8_t isTimeChange = timer -> timeLeftSec != (info -> timeHr*3600 + info -> timeMin*60 + info->timeSec);
+	
+	if(info -> updateScreen || isTimerStatusChange || isTimeChange){
+		if(info -> updateScreen) ILI9341_Draw_Text("TIMER", 10, 13, WHITE, 1, BLACK);
+		if(timer -> isActive){
+			info -> timerActive = timer -> isActive;
+			if(isTimerStatusChange || isTimeChange || info -> updateScreen){
+				info -> timeHr = (timer -> timeLeftSec) / 3600.0;
+				info -> timeMin = ((timer -> timeLeftSec) - (info -> timeHr*3600))/60.0;
+				info -> timeSec = (timer -> timeLeftSec) - (info -> timeHr*3600) - (info -> timeMin*60);
+				char timerStr[20];
+				sprintf(timerStr,"%.2d:%.2d:%.2d",info -> timeHr, info -> timeMin, info -> timeSec);
+				ILI9341_Draw_Text(timerStr, 10, 23, WHITE, 2, BLACK);
+			}
+		}
+		else{
+			if(isTimerStatusChange && timer -> timerDone){
+				info -> timerActive = 2;
+				ILI9341_Draw_Text("         ", 10, 23,  WHITE, 2, BLACK);
+				ILI9341_Draw_Text(" DONE ", 10, 23,  BLACK, 2, WHITE);
+			}
+			else if(isTimerStatusChange || info -> updateScreen) ILI9341_Draw_Text("OFF      ", 10, 23,  0x9492, 2, BLACK);
+		}
 	}
 	
-	
-	ILI9341_Draw_Text("TIMER", 10, 10, WHITE, 1, BLACK);
-	if(timer -> isActive && (timer -> timeLeftSec / 60 != (info -> timeHr*60) + info -> timeMin)){
-		info -> timeHr = (timer -> timeLeftSec) / 3600;
-		info -> timeMin = ((timer -> timeLeftSec) - (info -> timeHr*3600))/60;
-		info -> timeSec = (timer -> timeLeftSec) - (info -> timeHr*3600) - (info -> timeMin*60);
-		char timerStr[10];
-		sprintf(timerStr,"%.2d:%.2d",info -> timeHr, info -> timeMin);
-		ILI9341_Draw_Text(timerStr, 10, 23, WHITE, 2, BLACK);
+	if(info -> updateScreen){
+		ILI9341_Draw_Text("ABOUT", 250, 220, BLACK, 2, WHITE);
 	}
-	else ILI9341_Draw_Text("Off", 10, 23,  0x9492, 2, BLACK);
+	
+	if(info -> updateScreen || info -> updateAvg){
+		uint16_t textColor = WHITE;
+		uint16_t bgColor = BLACK;
+		if(info -> avgHighlightTimer > 0){
+			textColor = BLACK;
+			bgColor = WHITE;
+		}
+		
+		char avgTempStr[10];
+		sprintf(avgTempStr,"AVG %.2d C",info -> avgTemp);
+		ILI9341_Draw_Text(avgTempStr, 70, 120, textColor, 1, bgColor);
+		
+		char avgHumidStr[10];
+		sprintf(avgHumidStr,"AVG %.2d%%",info -> avgHumid);
+		ILI9341_Draw_Text(avgHumidStr, 70, 190, textColor, 1, bgColor);
+		
+		char avgLightStr[10];
+		sprintf(avgLightStr,"AVG %.2d%%",info -> avgLight);
+		ILI9341_Draw_Text(avgLightStr, 190, 190, textColor, 1, bgColor);
+		info -> updateAvg = 0;
+	}
+	
+	if(info -> avgHighlightTimer > 1000){
+		info -> avgHighlightTimer = 0;
+		info -> updateAvg = 1;
+	}
+	
+	info -> updateScreen = 0;
+	
+	if(TP_Touchpad_Pressed()){
+			uint16_t x_pos = 0;
+			uint16_t y_pos = 0;
+			
+			uint16_t position_array[2];
+			
+			if(TP_Read_Coordinates(position_array) == TOUCHPAD_DATA_OK){
+				x_pos = position_array[0];
+				y_pos = position_array[1];
+				
+				if(y_pos >= 1 && y_pos <= 100 && x_pos >= 200 && x_pos <= 233){
+					if(info -> timerActive == 2){
+						info -> timerActive = 0;
+						timer -> timerDone = 0;
+					}
+					changeToPage(info,1);
+				}
+				if(y_pos >= 250 && y_pos <= 315 && x_pos >= 5 && x_pos <= 23){
+					changeToPage(info,2);
+			}
+		}
+	}
 
 	return;
 }
 
 void timerPage(DisplayInfo* info, Timer* timer){
-	if(timer -> isActive && timer -> timeLeftSec != (info -> timeHr * 3600) + (info -> timeMin * 60) + (info -> timeSec)){
-		info -> timeHr = (timer -> timeLeftSec) / 3600;
-		info -> timeMin = ((timer -> timeLeftSec) - (info -> timeHr*3600))/60;
-		info -> timeSec = (timer -> timeLeftSec) - (info -> timeHr*3600) - (info -> timeMin*60);
+	
+	if(timer -> isActive && timer -> timeLeftSec != (info -> timeHr*3600 + info -> timeMin*60 + info->timeSec)){
+		info -> timeHr = (timer -> timeLeftSec) / 3600.0;
+		info -> timeMin = ((timer -> timeLeftSec) - (info -> timeHr*3600.0))/60.0;
+		info -> timeSec = (timer -> timeLeftSec) - (info -> timeHr*3600.0) - (info -> timeMin*60.0);
 		
 		info -> updateScreen = 1;
 	}
+	
+	if(timer -> timerDone){
+		timer -> timerDone = 0;
+		info -> timerActive = 0;
+	}
+	
 	if(info -> updateScreen){
 			char strHo[10],strM[10],strS[10];
 			uint16_t m = 0,ho = 0 ,s = 0;
@@ -350,13 +482,16 @@ void timerPage(DisplayInfo* info, Timer* timer){
 			sprintf(strHo ,"%02d:",ho);
 			sprintf(strM ,"%02d:",m);
 			sprintf(strS ,"%02d",s);
-			ILI9341_Draw_Text(strHo, 45, 50, BLACK, 6, WHITE);
-			ILI9341_Draw_Text(strM, 130, 50, BLACK, 6, WHITE);
-			ILI9341_Draw_Text(strS, 215, 50, BLACK, 6, WHITE);
+			ILI9341_Draw_Text(strHo, 45, 50, WHITE, 6, BLACK);
+			ILI9341_Draw_Text(strM, 130, 50, WHITE, 6, BLACK);
+			ILI9341_Draw_Text(strS, 215, 50, WHITE, 6, BLACK);
 			ILI9341_Draw_Filled_Rectangle_Coord(45, 100, 110, 135, BLUE);
 			ILI9341_Draw_Filled_Rectangle_Coord(130, 100, 195, 135, BLUE);
 			ILI9341_Draw_Filled_Rectangle_Coord(215, 100, 275, 135, BLUE);
 			ILI9341_Draw_Filled_Circle(155, 180, 30, RED);
+		
+			ILI9341_Draw_Text("TIMER", 45,5, WHITE, 2, BLACK);
+			ILI9341_Draw_Text("<<", 10,5, WHITE, 2, BLACK);
 		
 			info -> updateScreen = 0;
 	}
@@ -366,12 +501,14 @@ void timerPage(DisplayInfo* info, Timer* timer){
 			uint16_t x_pos = 0;
 			uint16_t y_pos = 0;
 					
-      uint16_t position_array[2];					
+      uint16_t position_array[2];
+
 					
 			if(TP_Read_Coordinates(position_array) == TOUCHPAD_DATA_OK){
 					x_pos = position_array[0];
-					y_pos = position_array[1];					
-								
+					y_pos = position_array[1];
+				
+				
 					if(y_pos > 45 && y_pos < 110 && x_pos > 100 && x_pos < 135) {
 						info -> timeHr += 1;
 						info -> timeHr %= 99;
@@ -389,34 +526,73 @@ void timerPage(DisplayInfo* info, Timer* timer){
 						timer -> timeLeftSec = (info -> timeHr*3600) + (info -> timeMin*60) + (info -> timeSec);
 						timer -> timerDone = 0;
 					}
+					if(y_pos > 0 && y_pos < 30 && x_pos > 220 && x_pos < 244) { 
+						changeToPage(info,0);
+					}
         }
 	}
 }
 
+void aboutUsPage(DisplayInfo* info){
+	if(info -> updateScreen){
+		ILI9341_Draw_Text("ABOUT US", 45,5, WHITE, 2, BLACK);
+		ILI9341_Draw_Text("<<", 10,5, WHITE, 2, BLACK);
+		
+		ILI9341_Draw_Text("CREATED BY", 45, 35, WHITE, 2, BLACK);
+		ILI9341_Draw_Text("61010216", 45, 50, WHITE, 2, BLACK);
+		ILI9341_Draw_Text("61010279", 45, 65, WHITE, 2, BLACK);
+		ILI9341_Draw_Text("61010588", 45, 80, WHITE, 2, BLACK);
+		ILI9341_Draw_Text("61010627", 45, 95, WHITE, 2, BLACK);
+		
+		info -> updateScreen = 0;
+	}
+	if(TP_Touchpad_Pressed()){
+			info -> updateScreen = 1;
+			uint16_t x_pos = 0;
+			uint16_t y_pos = 0;
+					
+      uint16_t position_array[2];
+
+					
+			if(TP_Read_Coordinates(position_array) == TOUCHPAD_DATA_OK){
+					x_pos = position_array[0];
+					y_pos = position_array[1];
+				
+					if(y_pos > 0 && y_pos < 30 && x_pos > 220 && x_pos < 244) { 
+						changeToPage(info,0);
+					}
+        }
+		}
+}
+
 int LCDDisplay(DisplayInfo* info, Timer* timer){
-	const uint8_t page = info -> page;
-	if(!info -> updateScreen) return 0;
-	switch(page){
+
+	switch(info -> page){
 		case 0:
 			mainPage(info, timer);
 			break;
 		case 1:
 			timerPage(info, timer);
 			break;
+		case 2:
+			aboutUsPage(info);
+			break;
 	}
 	
 	
-	return 0;
+	return 1;
 }
 
-void timerController(Timer* timer){
-	if(timer -> isActive && timer -> timeLeftSec == 0){
-		timer -> isActive = 0;
-		timer -> tick = 0;
-		timer -> timerDone = 1;
+void timerController(DisplayInfo* info,Timer* timer){
+	if(timer -> timerDone){
+		// when timer is done
+		if(info -> timerActive != 2) info -> updateScreen = 1;
+		info -> timeHr = info -> timeMin = info -> timeSec = 0;
 	}
 }
 
+
+// UART
 
 void adcLightSensor(uint32_t adc_val){
 	while (HAL_ADC_PollForConversion(&hadc1, 100) != HAL_OK) {}
@@ -427,6 +603,8 @@ void adcLightSensor(uint32_t adc_val){
 	sprintf(tmp, "%d", adc_val * 100 / 4096);
 	HAL_UART_Transmit(&huart3, (uint8_t*) &tmp, strlen(tmp), 1000);
 	HAL_UART_Transmit(&huart3, (uint8_t*) &" %\n\r", 6, 1000);
+		
+	lightValue = (int) adc_val * 100 / 4096.0;
 	
 	
 	if(topLightBuffer == 19) // Checking Array is full or not. 
@@ -505,6 +683,8 @@ void i2cAM2320Sensor(){
 
 
 void printRecord(){
+	if(timerForUART < 500) return;
+	timerForUART = 0;
 	record ++;
 	sprintf(str, "Record %05d\n\r", record);
 	while(__HAL_UART_GET_FLAG(&huart3, UART_FLAG_TC)==RESET) {}
@@ -513,8 +693,6 @@ void printRecord(){
 	adcLightSensor(adc_val);
 		
 	i2cAM2320Sensor();
-		
-	HAL_Delay(500);
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
@@ -522,7 +700,6 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	if (GPIO_Pin == GPIO_PIN_13)
 	{
 		HAL_UART_Transmit(&huart3, (uint8_t *) "Average 10 s Period\n\r", 21, 100);
-		HAL_Delay(200);
 		int light = 0;
 		float t = 0.0;
 		float h = 0.0;
@@ -551,7 +728,14 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 		while(__HAL_UART_GET_FLAG(&huart3, UART_FLAG_TC)==RESET) {}
 		HAL_UART_Transmit(&huart3, (uint8_t*) &str, strlen(str), 200);
 		HAL_UART_Transmit(&huart3, (uint8_t*) &"%\n\r\n", 4, 1000);
-		
+			
+		// Save the data to EEPROM
+		write_to_eeprom(light,t,h);
+		lcdInfo.avgTemp = t;
+		lcdInfo.avgHumid = h;
+		lcdInfo.avgLight = light;
+		lcdInfo.updateAvg = 1;
+		lcdInfo.avgHighlightTimer = 1;
 	}
 	
 }

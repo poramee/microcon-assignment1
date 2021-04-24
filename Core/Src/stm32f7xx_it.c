@@ -43,6 +43,8 @@
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
 extern Timer timer;
+extern int timerForUART;
+extern DisplayInfo lcdInfo;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -209,12 +211,22 @@ void TIM1_UP_TIM10_IRQHandler(void)
   /* USER CODE END TIM1_UP_TIM10_IRQn 0 */
   HAL_TIM_IRQHandler(&htim1);
   /* USER CODE BEGIN TIM1_UP_TIM10_IRQn 1 */
+	++timerForUART;
 	if(timer.isActive){
 		++timer.tick;
 		if(timer.tick == 1000) {
 			timer.tick = 0;
 			timer.timeLeftSec -= 1;
 		}
+	}
+	if(lcdInfo.avgHighlightTimer > 0){
+		++lcdInfo.avgHighlightTimer;
+	}
+	
+	if(timer.isActive && timer.timeLeftSec == 0){
+		timer.isActive = 0;
+		timer.tick = 0;
+		timer.timerDone = 1;
 	}
 
   /* USER CODE END TIM1_UP_TIM10_IRQn 1 */
