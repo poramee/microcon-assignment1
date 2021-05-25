@@ -415,11 +415,11 @@ void mainPage(DisplayInfo* info, Timer* timer){
 		ILI9341_Draw_Text(avgTempStr, 70, 120, textColor, 1, bgColor);
 		
 		char avgHumidStr[10];
-		sprintf(avgHumidStr,"AVG %.2d%%",info -> avgHumid);
+		sprintf(avgHumidStr,"AVG %.3d%%",info -> avgHumid);
 		ILI9341_Draw_Text(avgHumidStr, 70, 190, textColor, 1, bgColor);
 		
 		char avgLightStr[10];
-		sprintf(avgLightStr,"AVG %.2d%%",info -> avgLight);
+		sprintf(avgLightStr,"AVG %.3d%%",info -> avgLight);
 		ILI9341_Draw_Text(avgLightStr, 190, 190, textColor, 1, bgColor);
 		info -> updateAvg = 0;
 	}
